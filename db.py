@@ -10,6 +10,9 @@ from pathlib import Path
 # ex. /data/courses.db, via la variable d'environnement DB_PATH.
 DB_PATH = Path(os.environ.get("DB_PATH", Path(__file__).parent / "courses.db"))
 
+# S'assure que le dossier parent existe (utile pour /data sur un volume Railway).
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
 
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
