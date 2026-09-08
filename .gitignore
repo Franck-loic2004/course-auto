@@ -1,0 +1,4 @@
+courses.db
+__pycache__/
+*.pyc
+.envgit 
