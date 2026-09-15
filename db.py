@@ -1,5 +1,7 @@
 """
 db.py — Connexion et initialisation de la base de données SQLite.
+Version simplifiée : on ne suit plus de quantités/seuils, juste une liste
+de produits "à acheter" ou "déjà achetés".
 """
 import os
 import sqlite3
@@ -21,41 +23,15 @@ def get_connection() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Crée les tables si elles n'existent pas encore."""
+    """Crée la table si elle n'existe pas encore."""
     conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS ingredient (
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS produit (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nom TEXT NOT NULL UNIQUE,
-            quantite_actuelle REAL NOT NULL DEFAULT 0,
-            unite TEXT NOT NULL DEFAULT 'unité',
-            seuil_min REAL NOT NULL DEFAULT 0,
-            quantite_a_racheter REAL NOT NULL DEFAULT 1
-        )
-    """)
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS liste_courses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ingredient_id INTEGER NOT NULL,
-            date_ajout TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
             statut TEXT NOT NULL DEFAULT 'a_acheter',
-            FOREIGN KEY (ingredient_id) REFERENCES ingredient(id)
+            date_ajout TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         )
     """)
-
-    # Table d'historique -> utile pour la partie "analytique" plus tard
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS historique_consommation (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ingredient_id INTEGER NOT NULL,
-            quantite_utilisee REAL NOT NULL,
-            date_evenement TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-            FOREIGN KEY (ingredient_id) REFERENCES ingredient(id)
-        )
-    """)
-
     conn.commit()
     conn.close()

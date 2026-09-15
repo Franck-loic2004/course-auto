@@ -1,23 +1,16 @@
 """
-main.py — Point d'entrée en ligne de commande.
+main.py — Point d'entrée en ligne de commande (version simplifiée).
 
 Exemples :
     python main.py init
-    python main.py ajouter "Farine" 1000 g 200 1000
-    python main.py consommer "Farine" 300
-    python main.py verifier
+    python main.py ajouter "Farine"
+    python main.py retirer "Farine"
     python main.py liste
     python main.py achete
 """
 import sys
 from db import init_db
-from stock import (
-    ajouter_ingredient,
-    consommer_ingredient,
-    verifier_stock,
-    get_liste_courses,
-    marquer_liste_comme_achetee,
-)
+from stock import ajouter_a_liste, retirer_de_liste, get_liste_courses, marquer_liste_comme_achetee
 
 
 def main():
@@ -32,32 +25,30 @@ def main():
         print("✅ Base initialisée.")
 
     elif commande == "ajouter":
-        # ajouter "Farine" 1000 g 200 1000
-        nom, quantite, unite, seuil, a_racheter = sys.argv[2:7]
-        ajouter_ingredient(nom, float(quantite), unite, float(seuil), float(a_racheter))
-        print(f"✅ Ingrédient ajouté : {nom}")
-
-    elif commande == "consommer":
-        nom, quantite = sys.argv[2], float(sys.argv[3])
-        consommer_ingredient(nom, quantite)
-
-    elif commande == "verifier":
-        ajoutes = verifier_stock()
-        if ajoutes:
-            print("🛒 Ajoutés à la liste de courses :", ", ".join(ajoutes))
+        nom = " ".join(sys.argv[2:])
+        ajoute = ajouter_a_liste(nom)
+        if ajoute:
+            print(f"✅ Ajouté à la liste : {nom}")
         else:
-            print("👍 Rien à ajouter, le stock est suffisant.")
+            print(f"ℹ️ {nom} était déjà dans la liste.")
+
+    elif commande == "retirer":
+        nom = " ".join(sys.argv[2:])
+        if retirer_de_liste(nom):
+            print(f"✅ Retiré de la liste : {nom}")
+        else:
+            print(f"ℹ️ {nom} n'était pas dans la liste.")
 
     elif commande == "liste":
         liste = get_liste_courses()
         if not liste:
             print("La liste de courses est vide.")
-        for item in liste:
-            print(f"- {item['nom']} ({item['quantite_a_racheter']} {item['unite']})")
+        for nom in liste:
+            print(f"- {nom}")
 
     elif commande == "achete":
         marquer_liste_comme_achetee()
-        print("✅ Liste marquée comme achetée, stock remis à jour.")
+        print("✅ Liste vidée, courses marquées comme faites.")
 
     else:
         print(f"Commande inconnue : {commande}")

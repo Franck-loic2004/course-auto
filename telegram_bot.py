@@ -1,6 +1,5 @@
 """
-telegram_bot.py — Bot Telegram pour signaler la consommation d'ingrédients
-et consulter la liste de courses, sans passer par la ligne de commande.
+telegram_bot.py — Bot Telegram pour signaler qu'un produit manque.
 
 Configuration :
     1. Ouvre Telegram, cherche @BotFather
@@ -9,41 +8,36 @@ Configuration :
     4. Ta mère cherche le bot par son nom et envoie /start
 
 Usage côté utilisateur (dans Telegram) :
-    /start                  -> message d'accueil + liste des commandes
+    farine                  -> ajoute "farine" à la liste de courses
     /liste                  -> affiche la liste de courses actuelle
-    /verifier                -> relance la vérification du stock
-    farine 300               -> signale qu'on a utilisé 300 (unité par défaut) de farine
-    lait 1                   -> idem pour le lait
+    /retirer <nom>          -> enlève un produit ajouté par erreur
+    /achete                 -> vide la liste une fois les courses faites
 """
 import logging
 import os
-import re
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-from db import init_db, get_connection
-from stock import consommer_ingredient, verifier_stock, get_liste_courses
+from db import init_db
+from stock import ajouter_a_liste, retirer_de_liste, get_liste_courses, marquer_liste_comme_achetee
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 
-# Regex simple : "farine 300" / "Farine  300" / "lait 1.5"
-PATTERN_CONSOMMATION = re.compile(r"^([a-zA-ZÀ-ÿ\- ]+?)\s+(\d+(?:[.,]\d+)?)\s*$")
-
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Salut la famille Megam! Je gère la liste de courses de la famille.\n\n"
-        "Pour signaler qu'un ingrédient a été utilisé, écris simplement :\n"
-        "  farine 300\n"
-        "  lait 1\n\n"
+        "👋 Salut ! Je gère la liste de courses.\n\n"
+        "Pour ajouter un produit manquant, écris juste son nom :\n"
+        "  farine\n"
+        "  lait\n\n"
         "Commandes utiles :\n"
         "/liste - voir la liste de courses\n"
-        "/verifier - forcer une vérification du stock\n"
-        "/stock - voir tout le stock actuel"
+        "/retirer <nom> - enlever un produit ajouté par erreur\n"
+        "/achete - vider la liste une fois les courses faites"
     )
 
 
@@ -52,63 +46,39 @@ async def liste(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not items:
         await update.message.reply_text("👍 Rien à acheter pour le moment.")
         return
-    texte = "🛒 Liste de courses :\n" + "\n".join(
-        f"- {i['nom']} ({i['quantite_a_racheter']} {i['unite']})" for i in items
-    )
+    texte = "🛒 Liste de courses :\n" + "\n".join(f"- {nom}" for nom in items)
     await update.message.reply_text(texte)
 
 
-async def stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    conn = get_connection()
-    rows = conn.execute("SELECT nom, quantite_actuelle, unite FROM ingredient").fetchall()
-    conn.close()
-    if not rows:
-        await update.message.reply_text("Aucun ingrédient enregistré encore.")
+async def retirer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    nom = " ".join(context.args)
+    if not nom:
+        await update.message.reply_text("Format : /retirer <nom du produit>")
         return
-    texte = "📦 Stock actuel :\n" + "\n".join(
-        f"- {r['nom']} : {r['quantite_actuelle']} {r['unite']}" for r in rows
-    )
-    await update.message.reply_text(texte)
 
-
-async def verifier(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    ajoutes = verifier_stock()
-    if ajoutes:
-        await update.message.reply_text("🛒 Ajouté(s) à la liste : " + ", ".join(ajoutes))
+    if retirer_de_liste(nom):
+        await update.message.reply_text(f"✅ Retiré de la liste : {nom}")
     else:
-        await update.message.reply_text("👍 Rien de nouveau, le stock est suffisant.")
+        await update.message.reply_text(f"ℹ️ {nom} n'était pas dans la liste.")
+
+
+async def achete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    marquer_liste_comme_achetee()
+    await update.message.reply_text("✅ Liste vidée, bonnes courses !")
 
 
 async def gerer_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Intercepte les messages du type 'farine 300' pour décrémenter le stock."""
-    texte = update.message.text.strip().lower()
-    match = PATTERN_CONSOMMATION.match(texte)
+    """Tout message texte qui n'est pas une commande = un produit à ajouter."""
+    nom = update.message.text.strip()
 
-    if not match:
-        await update.message.reply_text(
-            "Je n'ai pas compris 🤔 Écris par exemple : farine 300"
-        )
+    if not nom:
         return
 
-    nom, quantite_str = match.groups()
-    quantite = float(quantite_str.replace(",", "."))
-    nom = nom.strip().capitalize()
-
-    conn = get_connection()
-    existe = conn.execute("SELECT 1 FROM ingredient WHERE nom = ?", (nom,)).fetchone()
-    conn.close()
-
-    if not existe:
-        await update.message.reply_text(f"⚠️ Je ne connais pas '{nom}'. Demande à Franck de l'ajouter.")
-        return
-
-    consommer_ingredient(nom, quantite)
-    ajoutes = verifier_stock()
-
-    reponse = f"✅ Noté : {nom} -{quantite}"
-    if nom in ajoutes:
-        reponse += f"\n🛒 {nom} est maintenant sur la liste de courses !"
-    await update.message.reply_text(reponse)
+    ajoute = ajouter_a_liste(nom)
+    if ajoute:
+        await update.message.reply_text(f"✅ Ajouté à la liste : {nom}")
+    else:
+        await update.message.reply_text(f"ℹ️ {nom} était déjà dans la liste.")
 
 
 def main():
@@ -123,8 +93,8 @@ def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("liste", liste))
-    app.add_handler(CommandHandler("stock", stock))
-    app.add_handler(CommandHandler("verifier", verifier))
+    app.add_handler(CommandHandler("retirer", retirer))
+    app.add_handler(CommandHandler("achete", achete))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, gerer_message))
 
     logger.info("Bot démarré, en écoute...")
