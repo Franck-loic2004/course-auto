@@ -23,7 +23,7 @@ def get_connection() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Crée la table si elle n'existe pas encore."""
+    """Crée les tables si elles n'existent pas encore."""
     conn = get_connection()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS produit (
@@ -33,5 +33,29 @@ def init_db() -> None:
             date_ajout TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS config (
+            cle TEXT PRIMARY KEY,
+            valeur TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def get_config(cle: str) -> str | None:
+    conn = get_connection()
+    row = conn.execute("SELECT valeur FROM config WHERE cle = ?", (cle,)).fetchone()
+    conn.close()
+    return row["valeur"] if row else None
+
+
+def set_config(cle: str, valeur: str) -> None:
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO config (cle, valeur) VALUES (?, ?) "
+        "ON CONFLICT(cle) DO UPDATE SET valeur = ?",
+        (cle, valeur, valeur),
+    )
     conn.commit()
     conn.close()
